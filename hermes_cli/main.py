@@ -459,6 +459,7 @@ from hermes_cli.subcommands.webhook import build_webhook_parser
 from hermes_cli.subcommands.hooks import build_hooks_parser
 from hermes_cli.subcommands.doctor import build_doctor_parser
 from hermes_cli.subcommands.verify import build_verify_parser
+from hermes_cli.subcommands.heal import build_heal_parser
 from hermes_cli.subcommands.security import build_security_parser
 from hermes_cli.subcommands.approvals import build_approvals_parser
 from hermes_cli.subcommands.dump import build_dump_parser
@@ -13582,6 +13583,12 @@ def main():
     # verify command  (parser built in hermes_cli/subcommands/verify.py)
     # =========================================================================
     build_verify_parser(subparsers, cmd_verify=cmd_verify)
+
+    # =========================================================================
+    # heal command — bounded self-healing diagnosis / verification / status
+    # =========================================================================
+    from hermes_cli.self_healing import run_heal_command
+    build_heal_parser(subparsers, cmd_heal=run_heal_command)
 
     # =========================================================================
     # security command — on-demand supply-chain audit

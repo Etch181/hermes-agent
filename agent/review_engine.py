@@ -297,3 +297,45 @@ def format_dispatch_note(result: Dict[str, Any], user_prompt: str = "") -> str:
         f"⚖ Review completed synchronously{model_note}{focus_note} — "
         f"results:\n{json.dumps(result.get('results', result), ensure_ascii=False)[:4000]}"
     )
+
+
+def wait_review(parent_agent, review_id: str, timeout: float = 300.0, poll_interval: float = 2.0) -> Dict[str, Any]:
+    """Wait for an async review delegation to complete and return its result.
+
+    This is the authoritative completion API for /review. It polls the durable
+    async_delegation store until the review finishes (status != 'running')
+    and returns the full result dict with status/result/verdict.
+
+    If the review does not complete within timeout, returns {"status": "timeout"}.
+    If the review_id cannot be found, returns {"status": "not_found"}.
+    If the async delegation system is unavailable, raises ImportError (FAIL CLOSED).
+    """
+    import time
+    try:
+        from tools.async_delegation import get_durable_delegation
+    except Exception as exc:
+        raise ImportError("async delegation system unavailable - no wait_review API") from exc
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        record = get_durable_delegation(review_id)
+        if record is None:
+            return {"status": "not_found", "delegation_id": review_id}
+        state = str(record.get("state") or "").lower()
+        if state in {"completed", "success", "error", "failed", "interrupted"}:
+            result = record.get("result") or {}
+            # Normalize status for callers
+            if state in {"completed", "success"}:
+                # Check the review result for actual verdict
+                if isinstance(result, dict):
+                    verdict = str(result.get("verdict") or result.get("status") or "accepted").lower()
+                    if verdict in {"rejected", "failed", "blocked", "error"}:
+                        return {"status": "rejected", "result": result, "delegation_id": review_id}
+                return {"status": "accepted", "result": result, "delegation_id": review_id}
+            elif state in {"error", "failed", "interrupted"}:
+                return {"status": "failed", "result": result, "delegation_id": review_id}
+            # Any other completed state = accepted by default
+            return {"status": "accepted", "result": result, "delegation_id": review_id}
+        time.sleep(poll_interval)
+
+    return {"status": "timeout", "delegation_id": review_id}
